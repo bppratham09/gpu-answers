@@ -1,0 +1,56 @@
+name: AI Answer
+
+on:
+  issues:
+    types: [opened, labeled]
+
+jobs:
+  answer:
+    if: contains(github.event.issue.labels.*.name, 'ai-request')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - name: Extract prompt
+        env:
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          python3 -c "
+          import os, json, re
+          body = os.environ['BODY']
+          m = re.search(r'\{.*\}', body, re.DOTALL)
+          data = json.loads(m.group())
+          open('prompt.txt', 'w').write(data['prompt'])
+          "
+      - name: Call AI
+        env:
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+        run: |
+          python3 -c "
+          import json, urllib.request, os
+          prompt = open('prompt.txt').read()
+          req = urllib.request.Request(
+              'https://aiprimetech.io/v1/chat/completions',
+              data=json.dumps({
+                  'model': 'claude-opus-4-5',
+                  'messages': [{'role': 'user', 'content': prompt}],
+                  'temperature': 0.1,
+                  'max_tokens': 16000,
+              }).encode(),
+              headers={
+                  'Content-Type': 'application/json',
+                  'Authorization': f'Bearer {os.environ[\"AI_API_KEY\"]}',
+              },
+          )
+          resp = urllib.request.urlopen(req, timeout=120).read()
+          data = json.loads(resp)
+          open('answer.md', 'w').write(data['choices'][0]['message']['content'])
+          "
+      - name: Post comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment $ISSUE --body-file answer.md --repo ${{ github.repository }}
+          gh issue close $ISSUE --repo ${{ github.repository }}
