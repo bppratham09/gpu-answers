@@ -37,6 +37,7 @@ jobs:
                   'messages': [{'role': 'user', 'content': prompt}],
                   'temperature': 0.1,
                   'max_tokens': 16000,
+                  'response_format': {'type': 'json_object'},
               }).encode(),
               headers={
                   'Content-Type': 'application/json',
